@@ -24,13 +24,14 @@
     </annotationProcessing>
     <bytecodeTargetLevel>
       <module name="banking-system" target="1.5" />
-      <module name="fraud-detection-service" target="17" />
+      <module name="fraud-detaction-service" target="17" />
     </bytecodeTargetLevel>
   </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
       <module name="account-service" options="-parameters" />
       <module name="api-gateway" options="-parameters" />
+      <module name="fraud-detaction-service" options="-parameters" />
       <module name="fraud-detection-service" options="-parameters" />
       <module name="notification-service" options="-parameters" />
       <module name="payment-service" options="-parameters" />
