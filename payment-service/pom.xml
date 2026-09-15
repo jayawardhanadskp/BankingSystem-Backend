@@ -48,6 +48,12 @@
             <artifactId>stripe-java</artifactId>
             <version>29.2.0</version>
         </dependency>
+        <!-- Loads payment-service/.env into env vars for local dev (never commit .env) -->
+        <dependency>
+            <groupId>me.paulschwarz</groupId>
+            <artifactId>spring-dotenv</artifactId>
+            <version>4.0.0</version>
+        </dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-mail</artifactId>
