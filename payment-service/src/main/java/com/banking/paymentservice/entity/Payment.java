@@ -21,8 +21,7 @@ public class Payment {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
-    private String razorPayOrderId;
-    private String razorPayPaymentId;
+    private String stripePaymentIntentId;
 
     @Column(nullable = false)
     private String accountNumber;

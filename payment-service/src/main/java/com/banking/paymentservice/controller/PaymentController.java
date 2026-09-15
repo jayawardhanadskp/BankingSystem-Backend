@@ -3,16 +3,13 @@ package com.banking.paymentservice.controller;
 import com.banking.paymentservice.dto.CreatePaymentRequest;
 import com.banking.paymentservice.dto.PaymentOrderResponse;
 import com.banking.paymentservice.service.PaymentService;
-import com.razorpay.RazorpayException;
+import com.stripe.exception.StripeException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Map;
-import java.util.Objects;
 
 @RestController
 @RequestMapping("api/v1/payments")
@@ -25,17 +22,18 @@ public class PaymentController {
     @PutMapping("/create-order")
     public ResponseEntity<PaymentOrderResponse> createPaymentOrder(
             @Valid @RequestBody CreatePaymentRequest request
-            ) throws RazorpayException {
+            ) throws StripeException {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(paymentService.createPaymentOrder(request));
     }
 
-    // razorpay webhook endpoint
+    // stripe webhook endpoint
     @PostMapping("/webhook")
     public ResponseEntity<String> handleWebhook(
-            @RequestBody Map<String, Object> payload
+            @RequestBody String payload,
+            @RequestHeader("Stripe-Signature") String signatureHeader
             ) {
-        paymentService.handleWebhook(payload);
+        paymentService.handleWebhook(payload, signatureHeader);
         return ResponseEntity.ok("Webhook processed");
     }
 }

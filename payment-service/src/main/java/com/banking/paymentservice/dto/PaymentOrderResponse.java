@@ -12,9 +12,10 @@ import java.math.BigDecimal;
 public class PaymentOrderResponse {
 
     private String paymentId;
-    private String razorPayOrderId;
+    private String stripePaymentIntentId;
+    private String stripeClientSecret;
     private BigDecimal amount;
     private String currency;
     private String status;
-    private String razorPayKeyId;
+    private String stripePublishableKey;
 }

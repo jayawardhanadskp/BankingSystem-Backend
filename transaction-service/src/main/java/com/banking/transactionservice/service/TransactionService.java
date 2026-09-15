@@ -87,7 +87,7 @@ public class TransactionService {
 
     public List<TransactionResponse> getTransactionHistory(String accountNumber) {
         return transactionRepository
-                .fiendBySenderAccountNumberOrderByCreatedAtDesc(accountNumber)
+                .findBySenderAccountNumberOrderByCreatedAtDesc(accountNumber)
                 .stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());

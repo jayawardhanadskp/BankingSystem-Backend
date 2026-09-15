@@ -23,15 +23,15 @@ public class NotificationService {
             String reason = (String) payload.get("reason");
 
             sendAlert(
-                    "",
+                    accountNumber,
                     "TRANSACTION VERIFICATION REQUIRED",
                     String.format(
                             "Suspicious activity detected on your account, " +
-                            "Reason %s" +
-                            "A transaction of %s is pending verification" +
-                            "Your OTP is %s. Valid for 5 min" +
-                            "If this wasn't you - Ignore this"
-
+                            "Reason %s " +
+                            "A transaction of %s is pending verification " +
+                            "Your OTP is %s. Valid for 5 min " +
+                            "If this wasn't you - Ignore this",
+                            reason, amount, otp
                     )
             );
 
@@ -48,7 +48,7 @@ public class NotificationService {
         try {
 
             String senderAccount = (String) payload.get("senderAccountNumber");
-            String receiverAccount = (String) payload.get("senderAccountNumber");
+            String receiverAccount = (String) payload.get("receiverAccountNumber");
             String amount = payload.get("amount").toString();
 
             //DEBIT ALERT
@@ -134,8 +134,8 @@ public class NotificationService {
                     "PAYMENT SUCCESSFUL",
                     String.format(
                                     "Payment of %s completed " +
-                                    "Razorpay id %s " +
-                                    amount, payload.get("razorpayPaymentId")
+                                    "Stripe payment intent id %s ",
+                                    amount, payload.get("stripePaymentIntentId")
                     ));
 
         } catch (Exception e) {
