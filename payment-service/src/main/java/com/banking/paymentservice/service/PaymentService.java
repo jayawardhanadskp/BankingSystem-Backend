@@ -5,12 +5,17 @@ import com.banking.paymentservice.dto.PaymentOrderResponse;
 import com.banking.paymentservice.entity.Payment;
 import com.banking.paymentservice.entity.PaymentStatus;
 import com.banking.paymentservice.repository.PaymentRepository;
-import com.razorpay.Order;
-import com.razorpay.RazorpayClient;
-import com.razorpay.RazorpayException;
+import com.stripe.Stripe;
+import com.stripe.exception.SignatureVerificationException;
+import com.stripe.exception.StripeException;
+import com.stripe.model.Event;
+import com.stripe.model.PaymentIntent;
+import com.stripe.model.StripeObject;
+import com.stripe.net.Webhook;
+import com.stripe.param.PaymentIntentCreateParams;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
@@ -18,67 +23,79 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
+import java.util.Optional;
 
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class PaymentService {
 
+    private static final String CURRENCY = "usd";
+
     private final PaymentRepository paymentRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
+    @Value("${stripe.secret-key}")
+    private String secretKey;
 
-    @Value("${razorpay.key-id}")
-    private String keyId;
+    @Value("${stripe.publishable-key}")
+    private String publishableKey;
 
-    @Value("${razorpay.key-secret}")
-    private String keySecret;
+    @Value("${stripe.webhook-secret}")
+    private String webhookSecret;
 
     private static final String PAYMENT_COMPLETED_TOPIC = "payment.completed";
     private static final String PAYMENT_FAILED_TOPIC = "payment.failed";
 
+    @PostConstruct
+    void configureStripeApiKey() {
+        Stripe.apiKey = secretKey;
+    }
+
     /**
-     * Create razorpay payment order
+     * Create a Stripe PaymentIntent
      *
      * FLOW:
-     * 1 create order in razorpay
+     * 1 create a PaymentIntent with Stripe
      * 2 save payment record in DB
-     * 3 return order details to frontend
-     * 4 frontend show razorpay checkout
-     * 5 user ays
-     * 6 razorpay calls webhook
+     * 3 return the client secret to the frontend
+     * 4 frontend confirms the payment using Stripe.js/Elements
+     * 5 Stripe calls our webhook once the payment succeeds/fails
      *
      * @param request
      * @return
      */
-    public PaymentOrderResponse createPaymentOrder(CreatePaymentRequest request) throws RazorpayException {
-        log.info("Creating payment order for account: {} amount: {}",
+    public PaymentOrderResponse createPaymentOrder(CreatePaymentRequest request) throws StripeException {
+        log.info("Creating payment intent for account: {} amount: {}",
                 request.getAccountNumber(), request.getAmount());
 
-        RazorpayClient razorpayClient = new RazorpayClient(keyId, keySecret);
-
-        // converted amount
-        int convertAmount = request.getAmount()
+        // converted amount to the smallest currency unit (cents)
+        long convertAmount = request.getAmount()
                 .multiply(BigDecimal.valueOf(100))
-                .intValue();
+                .longValue();
 
-        JSONObject orderRequest = new JSONObject();
-        orderRequest.put("amount", convertAmount);
-        orderRequest.put("currency", "USD/LKR");
-        orderRequest.put("receipt", "rcpt_" + System.currentTimeMillis() + UUID.randomUUID().toString()
-                .replace("-", "").substring(0, 10));
+        PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
+                .setAmount(convertAmount)
+                .setCurrency(CURRENCY)
+                .setDescription(request.getDescription())
+                .putMetadata("accountNumber", request.getAccountNumber())
+                .setAutomaticPaymentMethods(
+                        PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
+                                .setEnabled(true)
+                                .build()
+                )
+                .build();
 
-        Order razorpayOrder = razorpayClient.orders.create(orderRequest);
+        PaymentIntent paymentIntent = PaymentIntent.create(params);
 
-        log.info("Razorpay order created: {}", razorpayOrder.get("id").toString());
+        log.info("Stripe payment intent created: {}", paymentIntent.getId());
 
         // save payment record
         Payment payment = new Payment();
-        payment.setRazorPayPaymentId(razorpayOrder.get("id").toString());
+        payment.setStripePaymentIntentId(paymentIntent.getId());
         payment.setAccountNumber(request.getAccountNumber());
         payment.setAmount(request.getAmount());
-        payment.setCurrency("USD/LKR");
+        payment.setCurrency(CURRENCY);
         payment.setStatus(PaymentStatus.CREATED);
         payment.setDescription(request.getDescription());
 
@@ -86,41 +103,48 @@ public class PaymentService {
 
         return new PaymentOrderResponse(
                 savePayment.getId(),
-                razorpayOrder.get("id").toString(),
+                paymentIntent.getId(),
+                paymentIntent.getClientSecret(),
                 request.getAmount(),
-                "USD/LKR",
+                CURRENCY,
                 "CREATED",
-                keyId
+                publishableKey
         );
-
     }
 
-    public void handleWebhook(Map<String, Object> payload) {
-        log.info("Received Razorpay webhook: {}", payload.get("event"));
+    public void handleWebhook(String payload, String signatureHeader) {
 
-        String event = (String) payload.get("event");
+        Event event;
+        try {
+            event = Webhook.constructEvent(payload, signatureHeader, webhookSecret);
+        } catch (SignatureVerificationException e) {
+            log.error("Invalid Stripe webhook signature: {}", e.getMessage());
+            return;
+        }
 
-        if ("payment.captured".equals(event)) {
-            handlePaymentSuccess(payload);
-        } else if ("payment.failed".equals(event)) {
-            handlePaymentFailure(payload);
+        log.info("Received Stripe webhook: {}", event.getType());
+
+        Optional<StripeObject> stripeObject = event.getDataObjectDeserializer().getObject();
+        if (stripeObject.isEmpty() || !(stripeObject.get() instanceof PaymentIntent paymentIntent)) {
+            log.warn("Ignoring webhook event {} with no PaymentIntent payload", event.getType());
+            return;
+        }
+
+        if ("payment_intent.succeeded".equals(event.getType())) {
+            handlePaymentSuccess(paymentIntent);
+        } else if ("payment_intent.payment_failed".equals(event.getType())) {
+            handlePaymentFailure(paymentIntent);
         }
     }
 
-    private void handlePaymentSuccess(Map<String, Object> payload) {
+    private void handlePaymentSuccess(PaymentIntent paymentIntent) {
 
         try {
-
-            Map<String, Object> paymentData = extractPaymentData(payload);
-            String orderId = (String) paymentData.get("order_id");
-            String paymentId = (String) paymentData.get("id");
-
-            Payment payment = paymentRepository.findByRazorPayOrderId(orderId)
+            Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntent.getId())
                     .orElseThrow(() -> new RuntimeException(
-                            "Payment not found for order"+orderId
+                            "Payment not found for payment intent " + paymentIntent.getId()
                     ));
 
-            payment.setRazorPayPaymentId(paymentId);
             payment.setStatus(PaymentStatus.COMPLETED);
             paymentRepository.save(payment);
 
@@ -129,7 +153,7 @@ public class PaymentService {
             event.put("paymentId", payment.getId());
             event.put("accountNumber", payment.getAccountNumber());
             event.put("amount", payment.getAmount());
-            event.put("razorPayOrderId", payment.getRazorPayOrderId());
+            event.put("stripePaymentIntentId", payment.getStripePaymentIntentId());
 
             kafkaTemplate.send(PAYMENT_COMPLETED_TOPIC, payment.getId(), event);
             log.info("Payment completed: {}", payment.getId());
@@ -139,27 +163,24 @@ public class PaymentService {
         }
     }
 
-    private void handlePaymentFailure(Map<String, Object> payload) {
+    private void handlePaymentFailure(PaymentIntent paymentIntent) {
 
         try {
-            Map<String, Object> paymentData = extractPaymentData(payload);
-            String orderId = (String) paymentData.get("order_id");
-
-            Payment payment = paymentRepository.findByRazorPayOrderId(orderId)
+            Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntent.getId())
                     .orElseThrow(() -> new RuntimeException(
-                            "Payment not found for order"+orderId
+                            "Payment not found for payment intent " + paymentIntent.getId()
                     ));
 
             payment.setStatus(PaymentStatus.FAILED);
-            payment.setFailureReason("Payment failed via razorpay");
+            payment.setFailureReason("Payment failed via stripe");
             paymentRepository.save(payment);
 
-            //publish payment complete event
+            //publish payment failed event
             Map<String, Object> event = new HashMap<>();
             event.put("paymentId", payment.getId());
             event.put("accountNumber", payment.getAccountNumber());
             event.put("amount", payment.getAmount());
-            event.put("reason", "Payment failed via razorpay");
+            event.put("reason", "Payment failed via stripe");
 
             kafkaTemplate.send(PAYMENT_FAILED_TOPIC, payment.getId(), event);
             log.warn("Payment failed: {}", payment.getId());
@@ -167,14 +188,5 @@ public class PaymentService {
         } catch (Exception e) {
             log.error("Error handling payment failure: {}", e.getMessage());
         }
-    }
-
-    private Map<String, Object> extractPaymentData(Map<String, Object> payload) {
-
-        Map<String, Object> entity = (Map<String, Object>) payload.get("payload");
-
-        Map<String, Object> paymentWrapper = (Map<String, Object>) entity.get("payment");
-
-        return (Map<String, Object>) paymentWrapper.get("entity");
     }
 }
