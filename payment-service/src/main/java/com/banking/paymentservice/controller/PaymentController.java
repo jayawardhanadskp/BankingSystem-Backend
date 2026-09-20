@@ -2,6 +2,7 @@ package com.banking.paymentservice.controller;
 
 import com.banking.paymentservice.dto.CreatePaymentRequest;
 import com.banking.paymentservice.dto.PaymentOrderResponse;
+import com.banking.paymentservice.dto.PaymentStatusResponse;
 import com.banking.paymentservice.service.PaymentService;
 import com.stripe.exception.StripeException;
 import jakarta.validation.Valid;
@@ -25,6 +26,13 @@ public class PaymentController {
             ) throws StripeException {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(paymentService.createPaymentOrder(request));
+    }
+
+    @GetMapping("/{paymentId}")
+    public ResponseEntity<PaymentStatusResponse> getPaymentStatus(
+            @PathVariable String paymentId
+    ) {
+        return ResponseEntity.ok(paymentService.getPaymentStatus(paymentId));
     }
 
     // stripe webhook endpoint

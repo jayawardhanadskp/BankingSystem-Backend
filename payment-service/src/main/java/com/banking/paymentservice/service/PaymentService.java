@@ -2,8 +2,10 @@ package com.banking.paymentservice.service;
 
 import com.banking.paymentservice.dto.CreatePaymentRequest;
 import com.banking.paymentservice.dto.PaymentOrderResponse;
+import com.banking.paymentservice.dto.PaymentStatusResponse;
 import com.banking.paymentservice.entity.Payment;
 import com.banking.paymentservice.entity.PaymentStatus;
+import com.banking.paymentservice.exception.ResourceNotFoundException;
 import com.banking.paymentservice.repository.PaymentRepository;
 import com.stripe.Stripe;
 import com.stripe.exception.SignatureVerificationException;
@@ -109,6 +111,28 @@ public class PaymentService {
                 CURRENCY,
                 "CREATED",
                 publishableKey
+        );
+    }
+
+    /**
+     * Poll the current status of a payment. Deliberately omits the Stripe
+     * client secret / publishable key - those are only needed once at
+     * creation time and should not be re-exposed on every poll.
+     */
+    public PaymentStatusResponse getPaymentStatus(String paymentId) {
+        Payment payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Payment not found: " + paymentId));
+
+        return new PaymentStatusResponse(
+                payment.getId(),
+                payment.getStripePaymentIntentId(),
+                payment.getAmount(),
+                payment.getCurrency(),
+                payment.getStatus(),
+                payment.getDescription(),
+                payment.getFailureReason(),
+                payment.getCreatedAt(),
+                payment.getUpdatedAt()
         );
     }
 
