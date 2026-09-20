@@ -26,4 +26,5 @@ public class AccountResponse {
     private BigDecimal balance;
     private BigDecimal dailyTransactionLimit;
     private LocalDateTime createdAt;
+    private String fcmToken;
 }

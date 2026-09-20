@@ -1,12 +1,11 @@
 package com.banking.accountservice.controller;
 
 import com.banking.accountservice.dto.AccountResponse;
-import com.banking.accountservice.dto.CreateAccountRequest;
+import com.banking.accountservice.dto.FcmTokenRequest;
 import com.banking.accountservice.service.AccountService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,13 +18,6 @@ import java.math.BigDecimal;
 public class AccountController {
 
     private final AccountService accountService;
-
-    @PostMapping
-    public ResponseEntity<AccountResponse> createAccount(
-            @Valid @RequestBody CreateAccountRequest request) {
-
-        return ResponseEntity.status(HttpStatus.CREATED).body(accountService.createAccount(request));
-    }
 
     @GetMapping("/{accountNumber}")
     public ResponseEntity<AccountResponse> getAccount(
@@ -80,8 +72,20 @@ public class AccountController {
             @RequestParam BigDecimal amount
     ) {
         accountService.creditBalance(accountNumber, amount);
-        return ResponseEntity.ok("Balance deduct successfully");
+        return ResponseEntity.ok("Balance credited successfully");
+    }
+
+    /*
+  Registers/updates the FCM push-notification token for this account.
+  Called by the client app after obtaining a token from Firebase.
+  */
+    @PutMapping("/{accountNumber}/fcm-token")
+    public ResponseEntity<String> updateFcmToken(
+            @PathVariable String accountNumber,
+            @Valid @RequestBody FcmTokenRequest request
+    ) {
+        accountService.updateFcmToken(accountNumber, request.getFcmToken());
+        return ResponseEntity.ok("FCM token updated successfully");
     }
 }
-
 

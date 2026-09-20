@@ -9,5 +9,7 @@ public interface AccountRepository extends JpaRepository<Account,String> {
 
     boolean existsByEmail(String email);
     boolean existsByAccountNumber(String accountNumber);
+    boolean existsByUsername(String username);
     Optional<Account> findByAccountNumber(String accountNumber);
+    Optional<Account> findByUsername(String username);
 }

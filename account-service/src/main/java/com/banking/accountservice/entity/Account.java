@@ -24,6 +24,15 @@ public class Account {
     @Column(nullable = false, unique = true)
     private String accountNumber;
 
+    @Column(nullable = false, unique = true)
+    private String username;
+
+    @Column(nullable = false)
+    private String passwordHash;
+
+    @Column(nullable = true)
+    private String fcmToken;
+
     @Column(nullable = false)
     private String accountHolderName;
 
