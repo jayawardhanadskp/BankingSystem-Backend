@@ -19,9 +19,6 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 public class TransferRequest {
 
-    @NotBlank(message = "Sender Account Number is required")
-    private String senderAccountNumber;
-
     @NotBlank(message = "Receiver Account Number is required")
     private String receiverAccountNumber;
 

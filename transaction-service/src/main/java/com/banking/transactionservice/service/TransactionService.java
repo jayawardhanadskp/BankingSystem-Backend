@@ -8,6 +8,7 @@ import com.banking.transactionservice.entity.TransactionStatus;
 import com.banking.transactionservice.entity.TransactionType;
 import com.banking.transactionservice.event.TransactionCompletedEvent;
 import com.banking.transactionservice.event.TransactionInitiatedEvent;
+import com.banking.transactionservice.exception.ResourceNotFoundException;
 import com.banking.transactionservice.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,17 +45,17 @@ public class TransactionService {
      * @param request
      * @return
      */
-    public TransactionResponse transfer(TransferRequest request) {
+    public TransactionResponse transfer(String senderAccountNumber, TransferRequest request) {
 
-        log.info("SAGA START - Transfer: {} -> {} amount: {}", request.getSenderAccountNumber(), request.getReceiverAccountNumber(), request.getAmount());
+        log.info("SAGA START - Transfer: {} -> {} amount: {}", senderAccountNumber, request.getReceiverAccountNumber(), request.getAmount());
 
         // SAGA STEP 1: deduct form sender
         accountServiceClient.deductBalance(
-                request.getSenderAccountNumber(),
+                senderAccountNumber,
                 request.getAmount());
 
         Transaction transaction = new Transaction();
-        transaction.setSenderAccountNumber(request.getSenderAccountNumber());
+        transaction.setSenderAccountNumber(senderAccountNumber);
         transaction.setReceiverAccountNumber(request.getReceiverAccountNumber());
         transaction.setAmount(request.getAmount());
         transaction.setType(TransactionType.TRANSFER);
@@ -82,7 +83,7 @@ public class TransactionService {
 
     public TransactionResponse getTransaction(String transactionId) {
         return mapToResponse(transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new RuntimeException("Transaction not found" + transactionId)));
+                .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + transactionId)));
     }
 
     public List<TransactionResponse> getTransactionHistory(String accountNumber) {
@@ -97,7 +98,7 @@ public class TransactionService {
         log.info("OTP verification for transaction id {}", transactionId);
 
         Transaction transaction = transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new RuntimeException("Transaction not found" + transactionId));
+                .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + transactionId));
 
         String otpKey = "verification:otp" +transactionId;
         String storedOtp = redisTemplate.opsForValue().get(otpKey);
@@ -190,7 +191,7 @@ public class TransactionService {
     public void processCleanResult(String transactionId) {
 
         Transaction transaction = transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new RuntimeException("Transaction not found" + transactionId));
+                .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + transactionId));
 
         if (transaction.getStatus() != TransactionStatus.PROCESSING) {
             log.warn("Transaction {} not PROCESSING - skipping", transactionId);
@@ -213,7 +214,7 @@ public class TransactionService {
         response.setReferenceNumber(transaction.getReferenceNumber());
         response.setFailureReason(transaction.getFailureReason());
         response.setCreatedAt(transaction.getCreatedAt());
-        response.setCreatedAt(transaction.getCompletedAt());
+        response.setCompletedAt(transaction.getCompletedAt());
 
         return response;
     }

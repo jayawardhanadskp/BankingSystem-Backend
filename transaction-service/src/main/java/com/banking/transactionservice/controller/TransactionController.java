@@ -22,10 +22,11 @@ public class TransactionController {
 
     @PostMapping("/transfer")
     public ResponseEntity<TransactionResponse> transfer(
+            @RequestHeader("X-Account-Number") String senderAccountNumber,
             @Valid @RequestBody TransferRequest request
             ) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(transactionService.transfer(request));
+                .body(transactionService.transfer(senderAccountNumber, request));
     }
 
     @GetMapping("/account/{accountNumber}")
