@@ -1,0 +1,204 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2026-09-15T13:30:00.000Z",
+  "__export_source": "insomnia.desktop.app:v8.0.0",
+  "resources": [
+    {
+      "_id": "wrk_banking",
+      "_type": "workspace",
+      "parentId": null,
+      "name": "Banking System",
+      "description": "Account, Transaction, Payment (Stripe), Fraud Detection and Notification services behind api-gateway",
+      "scope": "collection"
+    },
+    {
+      "_id": "env_base",
+      "_type": "environment",
+      "parentId": "wrk_banking",
+      "name": "Base Environment",
+      "data": {
+        "gatewayUrl": "http://localhost:8080",
+        "accountServiceUrl": "http://localhost:8081",
+        "transactionServiceUrl": "http://localhost:8082",
+        "paymentServiceUrl": "http://localhost:8083",
+        "fraudServiceUrl": "http://localhost:8084",
+        "notificationServiceUrl": "http://localhost:8085",
+        "senderAccountNumber": "REPLACE_WITH_ACCOUNT_NUMBER",
+        "receiverAccountNumber": "REPLACE_WITH_ACCOUNT_NUMBER",
+        "transactionId": "REPLACE_WITH_TRANSACTION_ID",
+        "otp": "123456"
+      },
+      "dataPropertyOrder": {
+        "&": [
+          "gatewayUrl",
+          "accountServiceUrl",
+          "transactionServiceUrl",
+          "paymentServiceUrl",
+          "fraudServiceUrl",
+          "notificationServiceUrl",
+          "senderAccountNumber",
+          "receiverAccountNumber",
+          "transactionId",
+          "otp"
+        ]
+      },
+      "color": null,
+      "isPrivate": false,
+      "metaSortKey": 1
+    },
+
+    { "_id": "fld_account", "_type": "request_group", "parentId": "wrk_banking", "name": "Account Service", "metaSortKey": 1 },
+    { "_id": "fld_transaction", "_type": "request_group", "parentId": "wrk_banking", "name": "Transaction Service", "metaSortKey": 2 },
+    { "_id": "fld_payment", "_type": "request_group", "parentId": "wrk_banking", "name": "Payment Service (Stripe)", "metaSortKey": 3 },
+    { "_id": "fld_health", "_type": "request_group", "parentId": "wrk_banking", "name": "Health Checks", "metaSortKey": 4 },
+
+    {
+      "_id": "req_acc_create",
+      "_type": "request",
+      "parentId": "fld_account",
+      "name": "Create Account",
+      "method": "POST",
+      "url": "{{ _.gatewayUrl }}/api/v1/accounts",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"accountHolderName\": \"Alice\",\n  \"email\": \"alice@test.com\",\n  \"phone\": \"1111111111\",\n  \"accountType\": \"SAVINGS\",\n  \"initialDeposit\": 1000\n}"
+      },
+      "headers": [ { "name": "Content-Type", "value": "application/json" } ],
+      "metaSortKey": 1,
+      "description": "accountType is one of: SAVINGS, CURRENT, FIXED_DEPOSIT. Response includes the generated accountNumber — copy it into the senderAccountNumber/receiverAccountNumber environment variables."
+    },
+    {
+      "_id": "req_acc_get",
+      "_type": "request",
+      "parentId": "fld_account",
+      "name": "Get Account",
+      "method": "GET",
+      "url": "{{ _.gatewayUrl }}/api/v1/accounts/{{ _.senderAccountNumber }}",
+      "headers": [],
+      "metaSortKey": 2
+    },
+    {
+      "_id": "req_acc_balance",
+      "_type": "request",
+      "parentId": "fld_account",
+      "name": "Get Balance",
+      "method": "GET",
+      "url": "{{ _.gatewayUrl }}/api/v1/accounts/{{ _.senderAccountNumber }}/balance",
+      "headers": [],
+      "metaSortKey": 3
+    },
+    {
+      "_id": "req_acc_block",
+      "_type": "request",
+      "parentId": "fld_account",
+      "name": "Block Account",
+      "method": "PUT",
+      "url": "{{ _.gatewayUrl }}/api/v1/accounts/{{ _.senderAccountNumber }}/block",
+      "headers": [],
+      "metaSortKey": 4
+    },
+    {
+      "_id": "req_acc_deduct",
+      "_type": "request",
+      "parentId": "fld_account",
+      "name": "Deduct Balance (internal saga step)",
+      "method": "PUT",
+      "url": "{{ _.gatewayUrl }}/api/v1/accounts/{{ _.senderAccountNumber }}/deduct",
+      "parameters": [ { "name": "amount", "value": "50" } ],
+      "headers": [],
+      "metaSortKey": 5,
+      "description": "Normally only called internally by transaction-service as part of the transfer saga; exposed here for direct testing."
+    },
+    {
+      "_id": "req_acc_credit",
+      "_type": "request",
+      "parentId": "fld_account",
+      "name": "Credit Balance (internal saga step)",
+      "method": "PUT",
+      "url": "{{ _.gatewayUrl }}/api/v1/accounts/{{ _.receiverAccountNumber }}/credit",
+      "parameters": [ { "name": "amount", "value": "50" } ],
+      "headers": [],
+      "metaSortKey": 6,
+      "description": "Normally only called internally by transaction-service (compensating step / credit receiver); exposed here for direct testing."
+    },
+
+    {
+      "_id": "req_txn_transfer",
+      "_type": "request",
+      "parentId": "fld_transaction",
+      "name": "Transfer Funds",
+      "method": "POST",
+      "url": "{{ _.gatewayUrl }}/api/v1/transactions/transfer",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"senderAccountNumber\": \"{{ _.senderAccountNumber }}\",\n  \"receiverAccountNumber\": \"{{ _.receiverAccountNumber }}\",\n  \"amount\": 50,\n  \"description\": \"test transfer\"\n}"
+      },
+      "headers": [ { "name": "Content-Type", "value": "application/json" } ],
+      "metaSortKey": 1,
+      "description": "Kicks off the transfer saga: fraud check -> deduct sender -> credit receiver -> notifications. If flagged suspicious, response status is PENDING_VERIFICATION and an OTP is emitted on transaction.otp.generated (see notification-service logs) — use Verify OTP below."
+    },
+    {
+      "_id": "req_txn_verify",
+      "_type": "request",
+      "parentId": "fld_transaction",
+      "name": "Verify OTP",
+      "method": "POST",
+      "url": "{{ _.gatewayUrl }}/api/v1/transactions/{{ _.transactionId }}/verify",
+      "parameters": [ { "name": "otp", "value": "{{ _.otp }}" } ],
+      "headers": [],
+      "metaSortKey": 2
+    },
+    {
+      "_id": "req_txn_history",
+      "_type": "request",
+      "parentId": "fld_transaction",
+      "name": "Transaction History",
+      "method": "GET",
+      "url": "{{ _.gatewayUrl }}/api/v1/transactions/account/{{ _.senderAccountNumber }}",
+      "headers": [],
+      "metaSortKey": 3
+    },
+
+    {
+      "_id": "req_pay_create",
+      "_type": "request",
+      "parentId": "fld_payment",
+      "name": "Create Payment Order (Stripe PaymentIntent)",
+      "method": "PUT",
+      "url": "{{ _.gatewayUrl }}/api/v1/payments/create-order",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"accountNumber\": \"{{ _.senderAccountNumber }}\",\n  \"amount\": 100.50,\n  \"description\": \"test payment\"\n}"
+      },
+      "headers": [ { "name": "Content-Type", "value": "application/json" } ],
+      "metaSortKey": 1,
+      "description": "Requires real STRIPE_SECRET_KEY/STRIPE_PUBLISHABLE_KEY env vars set on payment-service, otherwise Stripe returns AuthenticationException. Response includes stripeClientSecret for use with Stripe.js/Elements on the frontend."
+    },
+    {
+      "_id": "req_pay_webhook",
+      "_type": "request",
+      "parentId": "fld_payment",
+      "name": "Stripe Webhook (manual test)",
+      "method": "POST",
+      "url": "{{ _.paymentServiceUrl }}/api/v1/payments/webhook",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"id\": \"evt_test\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"pi_test\",\n      \"object\": \"payment_intent\"\n    }\n  }\n}"
+      },
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" },
+        { "name": "Stripe-Signature", "value": "REPLACE_WITH_VALID_SIGNATURE" }
+      ],
+      "metaSortKey": 2,
+      "description": "Stripe signs this header using your webhook secret; you can't hand-craft it. Use the Stripe CLI instead: `stripe listen --forward-to localhost:8083/api/v1/payments/webhook` then `stripe trigger payment_intent.succeeded`. This request is here mainly for reference/documentation of the shape."
+    },
+
+    { "_id": "req_health_gateway", "_type": "request", "parentId": "fld_health", "name": "api-gateway", "method": "GET", "url": "{{ _.gatewayUrl }}/actuator/health", "headers": [], "metaSortKey": 1 },
+    { "_id": "req_health_account", "_type": "request", "parentId": "fld_health", "name": "account-service", "method": "GET", "url": "{{ _.accountServiceUrl }}/actuator/health", "headers": [], "metaSortKey": 2 },
+    { "_id": "req_health_transaction", "_type": "request", "parentId": "fld_health", "name": "transaction-service", "method": "GET", "url": "{{ _.transactionServiceUrl }}/actuator/health", "headers": [], "metaSortKey": 3 },
+    { "_id": "req_health_payment", "_type": "request", "parentId": "fld_health", "name": "payment-service", "method": "GET", "url": "{{ _.paymentServiceUrl }}/actuator/health", "headers": [], "metaSortKey": 4 },
+    { "_id": "req_health_fraud", "_type": "request", "parentId": "fld_health", "name": "fraud-detection-service", "method": "GET", "url": "{{ _.fraudServiceUrl }}/actuator/health", "headers": [], "metaSortKey": 5 },
+    { "_id": "req_health_notification", "_type": "request", "parentId": "fld_health", "name": "notification-service", "method": "GET", "url": "{{ _.notificationServiceUrl }}/actuator/health", "headers": [], "metaSortKey": 6 }
+  ]
+}
