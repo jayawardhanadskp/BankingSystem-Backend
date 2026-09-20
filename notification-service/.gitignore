@@ -3,6 +3,8 @@ target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
+.env
+bank-app-ad594-firebase-adminsdk-fbsvc-e1e8e62480.json
 
 ### STS ###
 .apt_generated

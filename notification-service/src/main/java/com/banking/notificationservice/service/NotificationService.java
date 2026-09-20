@@ -1,15 +1,20 @@
 package com.banking.notificationservice.service;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class NotificationService {
+
+    private final FcmService fcmService;
 
     @KafkaListener(topics = "transaction.otp.generated")
     public void consumeOtpGeneration(
@@ -23,17 +28,25 @@ public class NotificationService {
             String reason = (String) payload.get("reason");
 
             sendAlert(
-                    accountNumber,
+                    "",
                     "TRANSACTION VERIFICATION REQUIRED",
                     String.format(
                             "Suspicious activity detected on your account, " +
-                            "Reason %s " +
-                            "A transaction of %s is pending verification " +
-                            "Your OTP is %s. Valid for 5 min " +
-                            "If this wasn't you - Ignore this",
-                            reason, amount, otp
+                            "Reason %s" +
+                            "A transaction of %s is pending verification" +
+                            "Your OTP is %s. Valid for 5 min" +
+                            "If this wasn't you - Ignore this"
+
                     )
             );
+
+            Map<String, String> data = new HashMap<>();
+            data.put("transactionId", transactionId);
+            data.put("otp", otp);
+            data.put("amount", amount);
+            fcmService.sendPush(accountNumber, "OTP_REQUIRED", data,
+                    "Transaction verification required",
+                    "Your OTP is " + otp + ". Valid for 5 min.");
 
         } catch (Exception e) {
             log.error("Error sending OTP notification {}", e.getMessage());
@@ -48,8 +61,9 @@ public class NotificationService {
         try {
 
             String senderAccount = (String) payload.get("senderAccountNumber");
-            String receiverAccount = (String) payload.get("receiverAccountNumber");
+            String receiverAccount = (String) payload.get("senderAccountNumber");
             String amount = payload.get("amount").toString();
+            String transactionId = (String) payload.get("transactionId");
 
             //DEBIT ALERT
             sendAlert( senderAccount,
@@ -66,6 +80,15 @@ public class NotificationService {
                             "%s credited for account %s",
                             amount, receiverAccount
                     ));
+
+            Map<String, String> data = new HashMap<>();
+            data.put("transactionId", transactionId);
+            data.put("amount", amount);
+
+            fcmService.sendPush(senderAccount, "TRANSACTION_COMPLETED", data,
+                    "Debit Alert", amount + " debited from your account");
+            fcmService.sendPush(receiverAccount, "TRANSACTION_COMPLETED", data,
+                    "Credit Alert", amount + " credited to your account");
 
 
         } catch (Exception e) {
@@ -91,6 +114,12 @@ public class NotificationService {
                             accountNumber, reason
                     ));
 
+            Map<String, String> data = new HashMap<>();
+            data.put("reason", reason);
+            fcmService.sendPush(accountNumber, "FRAUD_DETECTED", data,
+                    "Suspicious activity detected",
+                    "Your account has been blocked. Reason: " + reason);
+
         } catch (Exception e) {
             log.error("Error sending fraud alert: {}", e.getMessage());
         }
@@ -105,6 +134,7 @@ public class NotificationService {
             String senderAccount = (String) payload.get("senderAccountNumber");
             String amount = payload.get("amount").toString();
             String reason = (String) payload.get("reason");
+            String transactionId = (String) payload.get("transactionId");
 
             sendAlert( senderAccount,
                     "REFUND PROCESSED",
@@ -115,6 +145,14 @@ public class NotificationService {
 
                             amount, reason, amount, senderAccount
                     ));
+
+            Map<String, String> data = new HashMap<>();
+            data.put("transactionId", transactionId);
+            data.put("amount", amount);
+            data.put("reason", reason);
+            fcmService.sendPush(senderAccount, "TRANSACTION_REFUNDED", data,
+                    "Refund processed",
+                    amount + " refunded to your account. Reason: " + reason);
 
         } catch (Exception e) {
             log.error("Error sending refund notification: {}", e.getMessage());
@@ -129,14 +167,22 @@ public class NotificationService {
 
             String accountNumber = (String) payload.get("accountNumber");
             String amount = payload.get("amount").toString();
+            String stripePaymentIntentId = (String) payload.get("stripePaymentIntentId");
 
             sendAlert( accountNumber,
                     "PAYMENT SUCCESSFUL",
                     String.format(
                                     "Payment of %s completed " +
-                                    "Stripe payment intent id %s ",
-                                    amount, payload.get("stripePaymentIntentId")
+                                    "Stripe payment intent %s ",
+                                    amount, stripePaymentIntentId
                     ));
+
+            Map<String, String> data = new HashMap<>();
+            data.put("amount", amount);
+            data.put("stripePaymentIntentId", stripePaymentIntentId);
+            fcmService.sendPush(accountNumber, "PAYMENT_COMPLETED", data,
+                    "Payment successful",
+                    "Payment of " + amount + " completed");
 
         } catch (Exception e) {
             log.error("Error sending payment success notification: {}", e.getMessage());
@@ -159,6 +205,12 @@ public class NotificationService {
                                     "please try again or contact support ",
                                     amount
                     ));
+
+            Map<String, String> data = new HashMap<>();
+            data.put("amount", amount);
+            fcmService.sendPush(accountNumber, "PAYMENT_FAILED", data,
+                    "Payment failed",
+                    "Payment of " + amount + " could not be processed");
 
         } catch (Exception e) {
             log.error("Error sending payment failure notification: {}", e.getMessage());
