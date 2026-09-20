@@ -7,7 +7,7 @@ spring:
       group-id: notification-service-group
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring:
           json:
@@ -21,10 +21,20 @@ spring:
                 type: java.util.HashMap
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
 
 server:
   port: 8085
+
+account:
+  service:
+    url: http://localhost:8081
+
+# Path to a Firebase service-account JSON credentials file. If unset, FCM
+# push notifications are skipped gracefully (a warning is logged at startup)
+# so the service still runs without a Firebase project configured.
+firebase:
+  credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
 
 management:
   endpoints:
